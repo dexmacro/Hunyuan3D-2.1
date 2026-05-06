@@ -24,16 +24,16 @@ import random
 import shutil
 import mathutils
 import cv2
-
+from multiprocessing import current_process
 """=============== BLENDER ==============="""
 
 IMPORT_FUNCTIONS: Dict[str, Callable] = {
-    "obj": bpy.ops.import_scene.obj,
+    "obj": bpy.ops.wm.obj_import,
     "glb": bpy.ops.import_scene.gltf,
     "gltf": bpy.ops.import_scene.gltf,
     "usd": bpy.ops.import_scene.usd,
     "fbx": bpy.ops.import_scene.fbx,
-    "stl": bpy.ops.import_mesh.stl,
+    "stl": bpy.ops.wm.stl_import,
     "usda": bpy.ops.import_scene.usda,
     "dae": bpy.ops.wm.collada_import,
     "ply": bpy.ops.import_mesh.ply,
@@ -405,10 +405,16 @@ def init_render(engine='CYCLES', resolution=512, geo_mode=False):
     bpy.context.scene.cycles.glossy_bounces = 1
     # bpy.context.scene.cycles.transparent_max_bounces = 3 if not geo_mode else 0
     # bpy.context.scene.cycles.transmission_bounces = 3 if not geo_mode else 1
+    #@2025/12/31，添加自适应采样和噪声阈值
+    bpy.context.scene.cycles.use_adaptive_sampling = True
+    bpy.context.scene.cycles.noise_threshold = 0.01
+    bpy.context.scene.cycles.samples = 1024
+    bpy.context.scene.cycles.denoiser = 'OPTIX'
+    
     bpy.context.scene.cycles.use_denoising = True
         
     bpy.context.preferences.addons['cycles'].preferences.get_devices()
-    # bpy.context.preferences.addons['cycles'].preferences.compute_device_type = 'CUDA'
+    bpy.context.preferences.addons['cycles'].preferences.compute_device_type = 'CUDA'
     
 def init_nodes(save_depth=False, save_normal=False, save_albedo=False, save_mr = False, save_mist=False):
     if not any([save_depth, save_normal, save_albedo, save_mist]):
@@ -774,9 +780,13 @@ def main(arg):
     os.makedirs(arg.output_folder, exist_ok=True)
 
     if arg.geo_mode:
+        #训练shapegen
         views = trellis_cond_camera_sequence(arg.views)
+        orthoViews = orthogonal_camera_sequence()
+        views.extend(orthoViews)
         arg.save_mesh = True
     else:
+        #训练纹理
         views = orthogonal_camera_sequence()
         arg.save_albedo = True
         arg.save_mr = True
@@ -892,6 +902,7 @@ def main(arg):
                               forward_axis='NEGATIVE_Z')
 
 if __name__ == '__main__':
+    import bpy
     parser = argparse.ArgumentParser(description='Renders given obj file by rotation a camera around it.')
     parser.add_argument('--views', type=int, default=24, 
         help='JSON string of views. Contains a list of {yaw, pitch, radius, fov} object.')
@@ -919,7 +930,7 @@ if __name__ == '__main__':
         help='Split the normals of the mesh.')
     parser.add_argument('--save_mesh', action='store_true', 
         help='Save the mesh as a .ply file.')
-    argv = sys.argv[sys.argv.index("--") + 1:]
+    #argv = sys.argv[sys.argv.index("--") + 1:]
+    argv = sys.argv[1:]
     args = parser.parse_args(argv)
-
     main(args)
